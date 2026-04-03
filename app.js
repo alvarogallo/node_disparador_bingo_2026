@@ -8,6 +8,7 @@ const { BingoGame } = require('./bingo');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SERVER_START = new Date().toISOString();
 
 // Registro de juegos activos
 const juegosActivos = new Map();
@@ -16,17 +17,54 @@ const juegosActivos = new Map();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Ruta principal - solo devuelve JSON
+// Ruta principal
 app.get('/', (req, res) => {
   res.json({
     status: 'ok',
     message: 'Servidor de bingo activo',
+    servidor_iniciado: SERVER_START,
     juegos_activos: Array.from(juegosActivos.keys()),
     socket: {
       url: process.env.SOCKET_URL || 'No configurado',
       canal: process.env.SOCKET_CANAL || 'No configurado'
     }
   });
+});
+
+// Test de conexión al socket
+app.get('/test-socket', async (req, res) => {
+  const url = process.env.SOCKET_URL;
+  const token = process.env.SOCKET_TOKEN;
+  const canal = process.env.SOCKET_CANAL;
+
+  if (!url || !token || !canal) {
+    return res.status(500).json({ status: 'error', message: 'Variables de entorno del socket no configuradas' });
+  }
+
+  const data = {
+    canal: canal,
+    token_write: token,
+    evento: 'test_disparador',
+    mensaje: JSON.stringify({ test: true, time_utc: Math.floor(Date.now() / 1000) })
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await response.json();
+    res.json({
+      status: response.ok ? 'ok' : 'error',
+      http_status: response.status,
+      socket_url: url,
+      canal: canal,
+      respuesta_socket: result
+    });
+  } catch (error) {
+    res.status(502).json({ status: 'error', message: error.message });
+  }
 });
 
 // Middleware de autenticación
@@ -89,6 +127,7 @@ app.post('/start_bingo', checkApiToken, (req, res) => {
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+  console.log(`Iniciado: ${SERVER_START}`);
   console.log(`Socket configurado en: ${process.env.SOCKET_URL || 'No configurado'}`);
   console.log(`Canal configurado: ${process.env.SOCKET_CANAL || 'No configurado'}`);
   console.log(`Token configurado: ${process.env.SOCKET_TOKEN ? 'Sí' : 'No'}`);
