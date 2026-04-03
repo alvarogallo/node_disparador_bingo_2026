@@ -2,6 +2,7 @@
 // Cargar variables de entorno lo antes posible
 require('dotenv').config();
 
+const fetch = require('node-fetch');
 const express = require('express');
 const bodyParser = require('body-parser');
 const { BingoGame } = require('./bingo');

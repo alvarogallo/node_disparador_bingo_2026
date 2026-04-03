@@ -1,4 +1,5 @@
 // bingo.js - Versión con letras de bingo e integración con servidor de sockets usando dotenv
+const fetch = require('node-fetch');
 
 class BingoGame {
   constructor(params) {
