@@ -10,7 +10,13 @@ const { BingoGame } = require('./bingo');
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
-    cors: { origin: '*', methods: ['GET', 'POST'] }
+    cors: {
+        origin:      '*',
+        methods:     ['GET', 'POST'],
+        credentials: false,
+    },
+    allowEIO3:  true,
+    transports: ['websocket', 'polling'],
 });
 
 const PORT         = process.env.PORT || 3000;
