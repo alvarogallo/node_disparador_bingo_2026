@@ -29,8 +29,17 @@ app.get('/', (req, res) => {
   });
 });
 
+// Middleware de autenticación
+function checkApiToken(req, res, next) {
+  const token = req.headers['authorization'];
+  if (!token || token !== `Bearer ${process.env.API_TOKEN}`) {
+    return res.status(401).json({ status: 'error', message: 'Token inválido o no proporcionado' });
+  }
+  next();
+}
+
 // Ruta para iniciar bingo
-app.post('/start_bingo', (req, res) => {
+app.post('/start_bingo', checkApiToken, (req, res) => {
   try {
     console.log('Recibiendo solicitud POST con parámetros:', JSON.stringify(req.body));
 
