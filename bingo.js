@@ -1,5 +1,4 @@
 // bingo.js - Versión con letras de bingo e integración con servidor de sockets usando dotenv
-const https = require('https');
 
 class BingoGame {
   constructor(params) {
@@ -178,61 +177,28 @@ class BingoGame {
    * @returns {Promise} Promesa que se resuelve con la respuesta
    */
   async enviarASocket(mensaje, numeroDeLaSerie) {
-    return new Promise((resolve, reject) => {
-      const arr_viene = {
+    const data = {
+      canal: this.socketConfig.canal,
+      token_write: this.socketConfig.token,
+      evento: this.codigo,
+      mensaje: JSON.stringify({
         numero: mensaje.combinacion,
-        num: numeroDeLaSerie, // Añadimos el contador (1-75)
+        num: numeroDeLaSerie,
         time_utc: Math.floor(Date.now() / 1000)
-      };
-      
-      const data = {
-        canal: this.socketConfig.canal,
-        token_write: this.socketConfig.token,
-        evento: this.codigo, // Usar directamente el código como evento, sin prefijo
-        mensaje: JSON.stringify(arr_viene)
-      };
-      
-      const postData = JSON.stringify(data);
-      
-      const options = {
+      })
+    };
+
+    try {
+      const response = await fetch(this.socketConfig.url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData)
-        }
-      };
-      
-      try {
-        const req = https.request(this.socketConfig.url, options, (res) => {
-          let responseData = '';
-          
-          res.on('data', (chunk) => {
-            responseData += chunk;
-          });
-          
-          res.on('end', () => {
-            try {
-              console.log(`Socket enviado: ${mensaje.combinacion} (${numeroDeLaSerie}/75) al evento: ${this.codigo}`);
-              resolve(responseData);
-            } catch (error) {
-              console.error('Error al procesar respuesta del socket:', error);
-              reject(error);
-            }
-          });
-        });
-        
-        req.on('error', (error) => {
-          console.error('Error al enviar al socket:', error);
-          reject(error);
-        });
-        
-        req.write(postData);
-        req.end();
-      } catch (error) {
-        console.error('Error al crear la solicitud:', error);
-        reject(error);
-      }
-    });
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const result = await response.json();
+      console.log(`Socket enviado: ${mensaje.combinacion} (${numeroDeLaSerie}/75)`, result);
+    } catch (error) {
+      console.error('Error al enviar al socket:', error);
+    }
   }
 
   /**
@@ -240,49 +206,26 @@ class BingoGame {
    * @param {number} minutos - Minutos restantes
    */
   async enviarFaltan(minutos) {
-    const arr_viene = {
-      faltan: minutos,
-      time_utc: Math.floor(Date.now() / 1000)
-    };
-    
     const data = {
       canal: this.socketConfig.canal,
-      token: this.socketConfig.token,
-      evento: this.codigo, // Usar directamente el código como evento, sin prefijo
-      mensaje: JSON.stringify(arr_viene)
+      token_write: this.socketConfig.token,
+      evento: this.codigo,
+      mensaje: JSON.stringify({
+        faltan: minutos,
+        time_utc: Math.floor(Date.now() / 1000)
+      })
     };
-    
+
     try {
-      const postData = JSON.stringify(data);
-      
-      const options = {
+      const response = await fetch(this.socketConfig.url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData)
-        }
-      };
-      
-      const req = https.request(this.socketConfig.url, options, (res) => {
-        let responseData = '';
-        
-        res.on('data', (chunk) => {
-          responseData += chunk;
-        });
-        
-        res.on('end', () => {
-          console.log(`Socket faltan enviado: ${minutos} al evento: ${this.codigo}`);
-        });
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
       });
-      
-      req.on('error', (error) => {
-        console.error('Error al enviar faltan al socket:', error);
-      });
-      
-      req.write(postData);
-      req.end();
+      const result = await response.json();
+      console.log(`Socket faltan enviado: ${minutos} al evento: ${this.codigo}`, result);
     } catch (error) {
-      console.error('Error al crear la solicitud faltan:', error);
+      console.error('Error al enviar faltan al socket:', error);
     }
   }
 
