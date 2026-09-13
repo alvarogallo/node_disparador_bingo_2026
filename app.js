@@ -22,6 +22,8 @@ const io     = new Server(server, {
 const PORT         = process.env.PORT || 3000;
 const SERVER_START = new Date().toISOString();
 
+// codigo -> instancia de BingoGame. Guardar la instancia (y no un simple true)
+// es lo que permite alcanzar el juego en marcha desde /stop_bingo.
 const juegosActivos = new Map();
 
 app.use(bodyParser.json());
@@ -75,13 +77,54 @@ app.post('/start_bingo', checkApiToken, (req, res) => {
         });
 
         const game = new BingoGame(params, io);
-        juegosActivos.set(game.codigo, true);
+        juegosActivos.set(game.codigo, game);
         game.start()
             .catch(err => console.error('Error en juego:', err))
             .finally(() => juegosActivos.delete(game.codigo));
 
     } catch (error) {
         console.error('Error general:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// ── POST /stop_bingo ─────────────────────────────────────────────────────
+// Corta la numeración de una partida. La usa Laravel cuando alguien canta un
+// BINGO válido: sin esto el juego sigue emitiendo los 75 números aunque ya
+// haya ganador, y el silencio depende de que cada cliente los descarte.
+app.post('/stop_bingo', checkApiToken, (req, res) => {
+    try {
+        const codigo = req.body && req.body.codigo;
+
+        if (!codigo) {
+            return res.status(400).json({ status: 'error', message: 'Falta "codigo"' });
+        }
+
+        const juego = juegosActivos.get(String(codigo));
+
+        // 409 y no 404: para quien llama, "no estaba corriendo" no es un fallo
+        // sino el estado que quería. /start_bingo ya usa 409 con ese sentido.
+        if (!juego) {
+            return res.status(409).json({
+                status:  'error',
+                message: `No hay un juego activo con código: ${codigo}`,
+                codigo,
+            });
+        }
+
+        const detenido = juego.detener('stop_bingo');
+
+        return res.json({
+            status:  'ok',
+            message: detenido
+                ? `Juego detenido: ${codigo}`
+                : `El juego ${codigo} ya se estaba deteniendo`,
+            codigo,
+            emitidos: juego.emitidos,
+        });
+
+    } catch (error) {
+        console.error('Error en stop_bingo:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 });

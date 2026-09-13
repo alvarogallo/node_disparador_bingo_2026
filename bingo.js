@@ -12,6 +12,17 @@ class BingoGame {
         const segundos = parseInt(params?.intervalo);
         this.intervalo = (!isNaN(segundos) && segundos > 0) ? segundos : 10;
 
+        // Estado de parada. `start()` es un bucle largo de awaits, así que para
+        // poder cortarlo hacen falta dos cosas: una bandera que el bucle consulte
+        // tras cada espera, y poder despertar la espera en curso. Sin lo segundo
+        // un stop tardaría hasta `intervalo` segundos —o un minuto entero
+        // durante la cuenta regresiva— en surtir efecto.
+        this.detenido = false;
+        this.motivoParada = null;
+        this.emitidos = 0;
+        this._timer = null;
+        this._despertar = null;
+
         this.bingoNumbers = [];
         if (params?.numeracion) {
             this.procesarNumeracionPersonalizada(params.numeracion);
@@ -64,8 +75,60 @@ class BingoGame {
         return 'O';
     }
 
+    /**
+     * Espera interrumpible: guarda el temporizador y su `resolve` para que
+     * `detener()` pueda cancelarla y continuar de inmediato.
+     */
     delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        return new Promise(resolve => {
+            this._despertar = resolve;
+            this._timer = setTimeout(() => {
+                this._timer = null;
+                this._despertar = null;
+                resolve();
+            }, ms);
+        });
+    }
+
+    /**
+     * Corta el juego. Devuelve false si ya estaba detenido, para que quien
+     * llama distinga "lo he parado yo" de "ya lo estaba".
+     */
+    detener(motivo = 'stop') {
+        if (this.detenido) return false;
+
+        this.detenido = true;
+        this.motivoParada = motivo;
+
+        if (this._timer) {
+            clearTimeout(this._timer);
+            this._timer = null;
+        }
+
+        // Despertar la espera en curso: el bucle de `start()` comprueba la
+        // bandera justo después del await y sale.
+        if (this._despertar) {
+            const seguir = this._despertar;
+            this._despertar = null;
+            seguir();
+        }
+
+        console.log(`[BingoGame] detener ${this.codigo} (${motivo}) tras ${this.emitidos} numero(s)`);
+
+        return true;
+    }
+
+    /**
+     * Último mensaje de un juego cortado. No lleva `tipo` ni `numero`, así que
+     * los clientes que no lo conozcan lo ignoran sin romperse.
+     */
+    avisarDetenido() {
+        this.emit(this.codigo, {
+            detenido: true,
+            motivo:   this.motivoParada || 'stop',
+            emitidos: this.emitidos,
+            time_utc: Math.floor(Date.now() / 1000),
+        });
     }
 
     emit(evento, data) {
@@ -76,12 +139,15 @@ class BingoGame {
     async start() {
         console.log(`[BingoGame] iniciando juego: ${this.codigo}`);
 
+        if (this.detenido) return this.avisarDetenido();
+
         // Cuenta regresiva por minutos
         let minutesLeft = this.startIn;
         if (minutesLeft > 0) {
             this.emit(this.codigo, { faltan: minutesLeft, time_utc: Math.floor(Date.now() / 1000) });
             while (minutesLeft > 0) {
                 await this.delay(60_000);
+                if (this.detenido) return this.avisarDetenido();
                 minutesLeft--;
                 if (minutesLeft > 0) {
                     this.emit(this.codigo, { faltan: minutesLeft, time_utc: Math.floor(Date.now() / 1000) });
@@ -94,6 +160,7 @@ class BingoGame {
 
         console.log(`[BingoGame] esperando ${this.intervalo}s antes del primer número…`);
         await this.delay(this.intervalo * 1000);
+        if (this.detenido) return this.avisarDetenido();
 
         // Números
         for (let i = 0; i < this.bingoNumbers.length; i++) {
@@ -107,9 +174,11 @@ class BingoGame {
                 num:      orden,
                 time_utc: Math.floor(Date.now() / 1000),
             });
+            this.emitidos = orden;
 
             if (i < this.bingoNumbers.length - 1) {
                 await this.delay(this.intervalo * 1000);
+                if (this.detenido) return this.avisarDetenido();
             }
         }
 
